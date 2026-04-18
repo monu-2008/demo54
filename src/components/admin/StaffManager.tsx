@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ref, onValue, push, update, remove } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,19 +50,12 @@ export default function StaffManager() {
 
   useEffect(() => {
     const staffRef = ref(db, "staff");
-    const unsubscribe = onValue(staffRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const list = Object.entries(data).map(([key, val]: [string, unknown]) => ({
-          id: key,
-          ...(val as Omit<Staff, "id">),
-        }));
-        setStaff(list);
-      } else {
-        setStaff([]);
-      }
+    const unsub = onValue(staffRef, (snap) => {
+      const list = rtdbToArray<Staff>(snap, "createdAt");
+      console.log(`[Firebase] StaffManager loaded: ${list.length} staff`);
+      setStaff(list);
     });
-    return () => unsubscribe();
+    return unsub;
   }, []);
 
   const openAdd = () => {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ref, onValue, update, remove } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,20 +36,12 @@ export default function ProductOrders({ compact = false }: { compact?: boolean }
 
   useEffect(() => {
     const ordRef = ref(db, "productOrders");
-    const unsubscribe = onValue(ordRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const list = Object.entries(data).map(([key, val]: [string, unknown]) => ({
-          id: key,
-          ...(val as Omit<ProductOrder, "id">),
-        }));
-        list.sort((a, b) => b.createdAt - a.createdAt);
-        setOrders(list);
-      } else {
-        setOrders([]);
-      }
+    const unsub = onValue(ordRef, (snap) => {
+      const list = rtdbToArray<ProductOrder>(snap, "createdAt");
+      console.log(`[Firebase] ProductOrders loaded: ${list.length} items`);
+      setOrders(list);
     });
-    return () => unsubscribe();
+    return unsub;
   }, []);
 
   const displayList = compact ? orders.slice(0, 5) : orders;

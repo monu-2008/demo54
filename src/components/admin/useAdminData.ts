@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { ref, onValue, update, remove, push, set } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { useAppStore } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
 import type { ServiceRequest, ProductOrder, StaffMember, Product, StaffLocation } from "./types";
@@ -34,37 +35,19 @@ export function useAdminData() {
   // Firebase listeners
   useEffect(() => {
     const unsub1 = onValue(ref(db, "serviceRequests"), (snap) => {
-      if (snap.exists()) {
-        const reqs: ServiceRequest[] = [];
-        snap.forEach((child) => reqs.push({ id: child.key || "", ...child.val() }));
-        reqs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setServiceRequests(reqs);
-      } else setServiceRequests([]);
+      setServiceRequests(rtdbToArray<ServiceRequest>(snap, "createdAt"));
     });
 
     const unsub2 = onValue(ref(db, "productOrders"), (snap) => {
-      if (snap.exists()) {
-        const ords: ProductOrder[] = [];
-        snap.forEach((child) => ords.push({ id: child.key || "", ...child.val() }));
-        ords.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setProductOrders(ords);
-      } else setProductOrders([]);
+      setProductOrders(rtdbToArray<ProductOrder>(snap, "createdAt"));
     });
 
     const unsub3 = onValue(ref(db, "staff"), (snap) => {
-      if (snap.exists()) {
-        const s: StaffMember[] = [];
-        snap.forEach((child) => s.push({ id: child.key || "", ...child.val() }));
-        setStaff(s);
-      } else setStaff([]);
+      setStaff(rtdbToArray<StaffMember>(snap, "createdAt"));
     });
 
     const unsub4 = onValue(ref(db, "products"), (snap) => {
-      if (snap.exists()) {
-        const p: Product[] = [];
-        snap.forEach((child) => p.push({ id: child.key || "", ...child.val() }));
-        setProducts(p);
-      } else setProducts([]);
+      setProducts(rtdbToArray<Product>(snap, "order"));
     });
 
     const unsub5 = onValue(ref(db, "settings/admin"), (snap) => {
@@ -72,16 +55,16 @@ export function useAdminData() {
     });
 
     const unsub6 = onValue(ref(db, "staffLocations"), (snap) => {
+      const locs: StaffLocation[] = [];
       if (snap.exists()) {
-        const locs: StaffLocation[] = [];
         snap.forEach((child) => {
           const data = child.val();
-          if (data) {
+          if (data && data.lat && data.lng) {
             locs.push({
               staffId: child.key || "",
               staffName: data.staffName || "Unknown",
-              lat: data.lat || 0,
-              lng: data.lng || 0,
+              lat: data.lat,
+              lng: data.lng,
               lastUpdated: data.lastUpdated || 0,
               activeRequestId: data.activeRequestId || "",
               activeRequestName: data.activeRequestName || "",
@@ -89,10 +72,8 @@ export function useAdminData() {
             });
           }
         });
-        setStaffLocations(locs);
-      } else {
-        setStaffLocations([]);
       }
+      setStaffLocations(locs);
     });
 
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); };

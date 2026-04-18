@@ -46,6 +46,7 @@ export default function FullProducts() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orderForm, setOrderForm] = useState({ name: "", phone: "", address: "" });
   const [orderLoading, setOrderLoading] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
@@ -67,14 +68,14 @@ export default function FullProducts() {
         setProducts([]);
       }
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
   useEffect(() => {
     const unsub = onValue(ref(db, "settings/site"), (snap) => {
       if (snap.exists()) setSiteSettings(snap.val());
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
   const CATEGORIES = Array.isArray(siteSettings.productCategories) && siteSettings.productCategories.length > 0
@@ -108,18 +109,49 @@ export default function FullProducts() {
       return;
     }
     setOrderLoading(true);
+
+    // Try to capture customer's live location
+    let customerLat: number | null = null;
+    let customerLng: number | null = null;
     try {
-      await push(ref(db, "productOrders"), {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Geolocation not supported"));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 60000,
+        });
+      });
+      customerLat = position.coords.latitude;
+      customerLng = position.coords.longitude;
+    } catch (geoErr) {
+      console.warn("Could not get customer location:", geoErr);
+    }
+
+    try {
+      const orderId = "RC-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const orderData: Record<string, unknown> = {
+        orderId,
         productName: selectedProduct?.name,
         productPrice: selectedProduct?.price,
-        customerName: orderForm.name,
-        customerPhone: orderForm.phone,
-        customerAddress: orderForm.address,
+        customerName: orderForm.name.trim(),
+        customerPhone: orderForm.phone.trim(),
+        customerAddress: orderForm.address.trim(),
         status: "pending",
         createdAt: Date.now(),
-      });
+      };
+      if (customerLat !== null && customerLng !== null) {
+        orderData.customerLat = customerLat;
+        orderData.customerLng = customerLng;
+        orderData.customerLocationTime = Date.now();
+      }
+      await push(ref(db, "productOrders"), orderData);
+      setLastOrderId(orderId);
       setOrderOpen(false);
-      toast.success("Order Placed!", { description: "Please complete payment via WhatsApp." });
+      toast.success("Order Placed!", { description: `Order ID: ${orderId}. Complete payment via WhatsApp.` });
     } catch {
       toast.error("Order failed");
     }
@@ -127,8 +159,9 @@ export default function FullProducts() {
   };
 
   const openWhatsApp = () => {
-    const msg = `New Order: ${selectedProduct?.name}, Name: ${orderForm.name}, Address: ${orderForm.address}, Phone: ${orderForm.phone}`;
-    window.open(`https://wa.me/91XXXXXXXXXX?text=${encodeURIComponent(msg)}`, "_blank");
+    const msg = `Hi! I want to pay for my order.\n\nOrder ID: ${lastOrderId}\nProduct: ${selectedProduct?.name}\nPrice: ${selectedProduct?.price}\nName: ${orderForm.name}\nPhone: ${orderForm.phone}\nAddress: ${orderForm.address}`;
+    const whatsapp = siteSettings.whatsapp || "919876543210";
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   return (

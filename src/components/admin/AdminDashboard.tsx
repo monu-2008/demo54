@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { useAppStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import {
   LogOut, ArrowLeft, Settings, ExternalLink,
 } from "lucide-react";
@@ -116,6 +117,7 @@ interface Enquiry {
 
 interface ProductOrder {
   id: string;
+  orderId?: string;
   productName: string;
   productPrice: string;
   customerName: string;
@@ -123,6 +125,9 @@ interface ProductOrder {
   customerAddress: string;
   status: string;
   createdAt: number;
+  customerLat?: number;
+  customerLng?: number;
+  customerLocationTime?: number;
   [key: string]: unknown;
 }
 
@@ -363,9 +368,31 @@ const FormSection = ({ title, children }: { title: string; children: React.React
   </div>
 );
 
+// ── ADMIN ACCESS CONTROL ──
+const ALLOWED_ADMIN_EMAILS = [
+  "racecomputer16000@gmail.com",
+  "manmohansharma002008@gmail.com",
+];
+const MASTER_ADMIN_EMAIL = "manmohansharma002008@gmail.com";
+
 export default function AdminDashboard() {
-  const { adminLogout, adminUser } = useAppStore();
+  const { adminLogout, adminUser, adminType, setAdminType } = useAppStore();
   const isMobile = useIsMobile();
+
+  // ── ADMIN ACCESS CHECK ──
+  const isAdminEmail = adminUser?.email ? ALLOWED_ADMIN_EMAILS.includes(adminUser.email.toLowerCase()) : false;
+  const isMasterAdmin = adminUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL;
+
+  // Update admin type based on email
+  useEffect(() => {
+    if (adminUser?.email) {
+      if (isMasterAdmin) {
+        setAdminType("master");
+      } else if (isAdminEmail) {
+        setAdminType("admin");
+      }
+    }
+  }, [adminUser?.email, isMasterAdmin, isAdminEmail, setAdminType]);
 
   // ── NAV ──
   const [activePanel, setActivePanel] = useState("dashboard");
@@ -375,14 +402,27 @@ export default function AdminDashboard() {
   // ── ENQUIRIES ──
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [enquiryFilter, setEnquiryFilter] = useState("all");
+  const [enquiryDateFrom, setEnquiryDateFrom] = useState("");
+  const [enquiryDateTo, setEnquiryDateTo] = useState("");
+  const [enquiryQuickDate, setEnquiryQuickDate] = useState("all");
+  const [enquiryDebugInfo, setEnquiryDebugInfo] = useState("");
+  const [enquiryPage, setEnquiryPage] = useState(1);
+  const ENQUIRIES_PER_PAGE = 50;
 
   // ── PRODUCT ORDERS ──
   const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
   const [productOrderFilter, setProductOrderFilter] = useState("all");
+  const [productOrderSearch, setProductOrderSearch] = useState("");
+  const [orderDateFrom, setOrderDateFrom] = useState("");
+  const [orderDateTo, setOrderDateTo] = useState("");
+  const [orderQuickDate, setOrderQuickDate] = useState("all");
 
   // ── SERVICE REQUESTS ──
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [serviceReqFilter, setServiceReqFilter] = useState("all");
+  const [serviceDateFrom, setServiceDateFrom] = useState("");
+  const [serviceDateTo, setServiceDateTo] = useState("");
+  const [serviceQuickDate, setServiceQuickDate] = useState("all");
 
   // ── STAFF ──
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -447,54 +487,53 @@ export default function AdminDashboard() {
   //  FIREBASE LISTENERS
   // ═══════════════════════════════════════
 
+  // rtdbToArray is now imported from @/lib/rtdbHelpers — shared bullet-proof helper
+
+  // ── ENQUIRIES: Real-time listener (onValue fires immediately with current data) ──
   useEffect(() => {
-    const unsub = onValue(ref(db, "enquiries"), (snap) => {
-      const list: Enquiry[] = [];
-      if (snap.exists()) {
-        snap.forEach((child) => list.push({ id: child.key || "", ...child.val() as Omit<Enquiry, 'id'> }));
-        list.sort((a, b) => (b.createdAt || b.timestamp || 0) - (a.createdAt || a.timestamp || 0));
-      }
+    const enquiriesRef = ref(db, "enquiries");
+    const unsub = onValue(enquiriesRef, (snap) => {
+      const list = rtdbToArray<Enquiry>(snap, "createdAt");
+      console.log(`[Firebase] Enquiries loaded: ${list.length} items`);
       setEnquiries(list);
+      setEnquiryDebugInfo(`onValue: ${list.length} enquiries`);
+    }, (error) => {
+      console.error("[Firebase] Enquiries error:", error);
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
+  // ── PRODUCT ORDERS: Real-time listener ──
   useEffect(() => {
     const unsub = onValue(ref(db, "productOrders"), (snap) => {
-      const list: ProductOrder[] = [];
-      if (snap.exists()) {
-        snap.forEach((child) => list.push({ id: child.key || "", ...child.val() as Omit<ProductOrder, 'id'> }));
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      }
+      const list = rtdbToArray<ProductOrder>(snap, "createdAt");
+      console.log(`[Firebase] Product Orders loaded: ${list.length} items`);
       setProductOrders(list);
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
+  // ── SERVICE REQUESTS: Real-time listener ──
   useEffect(() => {
     const unsub = onValue(ref(db, "serviceRequests"), (snap) => {
-      const list: ServiceRequest[] = [];
-      if (snap.exists()) {
-        snap.forEach((child) => list.push({ id: child.key || "", ...child.val() as Omit<ServiceRequest, 'id'> }));
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      }
+      const list = rtdbToArray<ServiceRequest>(snap, "createdAt");
+      console.log(`[Firebase] Service Requests loaded: ${list.length} items`);
       setServiceRequests(list);
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
+  // ── STAFF: Real-time listener ──
   useEffect(() => {
     const unsub = onValue(ref(db, "staff"), (snap) => {
-      const list: StaffMember[] = [];
-      if (snap.exists()) {
-        snap.forEach((child) => list.push({ id: child.key || "", ...child.val() as Omit<StaffMember, 'id'> }));
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      }
+      const list = rtdbToArray<StaffMember>(snap, "createdAt");
+      console.log(`[Firebase] Staff loaded: ${list.length} items`);
       setStaffList(list);
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
+  // ── SETTINGS: Real-time listener ──
   useEffect(() => {
     const unsub = onValue(ref(db, "settings/site"), (snap) => {
       if (snap.exists()) {
@@ -505,7 +544,7 @@ export default function AdminDashboard() {
         if (d.siteMode) setSelectedMode(d.siteMode);
       }
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -601,37 +640,140 @@ export default function AdminDashboard() {
       }
       setStaffLocations(locs);
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
   // ═══════════════════════════════════════
   //  COMPUTED
   // ═══════════════════════════════════════
 
-  const filteredEnquiries = enquiryFilter === "all"
-    ? enquiries
-    : enquiries.filter((e) => {
-        if (enquiryFilter === "new") return !e.status || e.status === "new";
-        return e.status === enquiryFilter;
+  // ── DATE FILTER HELPERS ──
+  const getDateRange = (quickDate: string): { from: number; to: number } | null => {
+    if (quickDate === "all") return null;
+    const now = new Date();
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+    let from: number;
+    switch (quickDate) {
+      case "today":
+        from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+        break;
+      case "yesterday": {
+        const yd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        from = yd.getTime();
+        const yto = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999).getTime();
+        return { from, to: yto };
+      }
+      case "7days":
+        from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0).getTime();
+        break;
+      case "30days":
+        from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0).getTime();
+        break;
+      case "thisMonth":
+        from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+        break;
+      case "lastMonth": {
+        const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+        from = lm.getTime();
+        const lmTo = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime();
+        return { from, to: lmTo };
+      }
+      default:
+        return null;
+    }
+    return { from, to };
+  };
+
+  const filterByDateRange = (items: { createdAt?: number; timestamp?: number }[], dateFrom: string, dateTo: string, quickDate: string) => {
+    // Custom date range takes priority
+    if (dateFrom || dateTo) {
+      return items.filter((item) => {
+        const ts = item.createdAt || item.timestamp || 0;
+        if (dateFrom) {
+          const fromTs = new Date(dateFrom).getTime();
+          if (ts < fromTs) return false;
+        }
+        if (dateTo) {
+          const toTs = new Date(dateTo).getTime() + 86400000 - 1; // end of day
+          if (ts > toTs) return false;
+        }
+        return true;
       });
+    }
+    // Quick date filter
+    const range = getDateRange(quickDate);
+    if (!range) return items;
+    return items.filter((item) => {
+      const ts = item.createdAt || item.timestamp || 0;
+      return ts >= range.from && ts <= range.to;
+    });
+  };
+
+  const QUICK_DATE_OPTIONS = [
+    { id: "all", label: "All Time" },
+    { id: "today", label: "Today" },
+    { id: "yesterday", label: "Yesterday" },
+    { id: "7days", label: "Last 7 Days" },
+    { id: "30days", label: "Last 30 Days" },
+    { id: "thisMonth", label: "This Month" },
+    { id: "lastMonth", label: "Last Month" },
+  ];
+
+  const filteredEnquiries = filterByDateRange(
+    enquiryFilter === "all"
+      ? enquiries
+      : enquiries.filter((e) => {
+          if (enquiryFilter === "new") return !e.status || e.status === "new";
+          return e.status === enquiryFilter;
+        }),
+    enquiryDateFrom,
+    enquiryDateTo,
+    enquiryQuickDate
+  );
+
+  // Pagination for enquiries
+  const totalEnquiryPages = Math.max(1, Math.ceil(filteredEnquiries.length / ENQUIRIES_PER_PAGE));
+  const paginatedEnquiries = filteredEnquiries.slice((enquiryPage - 1) * ENQUIRIES_PER_PAGE, enquiryPage * ENQUIRIES_PER_PAGE);
+
+  // Reset page when filter changes
+  useEffect(() => { setEnquiryPage(1); }, [enquiryFilter, enquiryDateFrom, enquiryDateTo, enquiryQuickDate]);
 
   const newEnquiryCount = enquiries.filter((e) => !e.status || e.status === "new").length;
 
-  const filteredProductOrders = productOrderFilter === "all"
-    ? productOrders
-    : productOrders.filter((o) => {
-        if (productOrderFilter === "pending") return !o.status || o.status === "pending";
-        return o.status === productOrderFilter;
-      });
+  const filteredProductOrders = filterByDateRange(
+    (productOrderFilter === "all"
+      ? productOrders
+      : productOrders.filter((o) => {
+          if (productOrderFilter === "pending") return !o.status || o.status === "pending";
+          return o.status === productOrderFilter;
+        })
+    ).filter((o) => {
+      if (!productOrderSearch.trim()) return true;
+      const search = productOrderSearch.trim().toUpperCase();
+      const orderId = o.orderId || ("RC-" + o.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase());
+      return orderId.includes(search) ||
+        (o.customerName || "").toUpperCase().includes(search) ||
+        (o.customerPhone || "").includes(search) ||
+        (o.productName || "").toUpperCase().includes(search);
+    }),
+    orderDateFrom,
+    orderDateTo,
+    orderQuickDate
+  );
 
   const pendingProductOrderCount = productOrders.filter((o) => !o.status || o.status === "pending").length;
 
-  const filteredServiceReqs = serviceReqFilter === "all"
-    ? serviceRequests
-    : serviceRequests.filter((r) => {
-        if (serviceReqFilter === "pending") return !r.status || r.status === "pending";
-        return r.status === serviceReqFilter;
-      });
+  const filteredServiceReqs = filterByDateRange(
+    serviceReqFilter === "all"
+      ? serviceRequests
+      : serviceRequests.filter((r) => {
+          if (serviceReqFilter === "pending") return !r.status || r.status === "pending";
+          return r.status === serviceReqFilter;
+        }),
+    serviceDateFrom,
+    serviceDateTo,
+    serviceQuickDate
+  );
 
   const pendingServiceReqCount = serviceRequests.filter((r) => !r.status || r.status === "pending").length;
 
@@ -1162,30 +1304,31 @@ export default function AdminDashboard() {
       </div>
 
       <FormSection title="Recent Enquiries">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-gray-400">{enquiries.length} total enquiries</span>
+          {enquiries.length > 5 && (
+            <button onClick={() => showPanel("enquiries")} className="text-xs text-red-600 hover:underline font-medium cursor-pointer">View All →</button>
+          )}
+        </div>
         {enquiries.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">No enquiries yet</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {["Name", "Phone", "Type", "Time", "Status"].map((h) => (
-                    <th key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2.5 text-left border-b border-gray-100 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {enquiries.map((e) => (
-                  <tr key={e.id}>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-50">{e.name || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm border-b border-gray-50"><a href={`tel:${e.phone}`} className="text-red-600 hover:underline">{e.phone || "-"}</a></td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 border-b border-gray-50">{e.category || e.type || "-"}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-400 border-b border-gray-50 whitespace-nowrap">{formatTime(e.createdAt || e.timestamp)}</td>
-                    <td className="px-3 py-2.5 border-b border-gray-50"><StatusBadge status={e.status || "new"} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2.5">
+            {enquiries.slice(0, 10).map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-3 bg-gray-50/80 rounded-lg px-3 py-2.5 border border-gray-100">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-800 truncate">{e.name || "-"}</p>
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                    <a href={`tel:${e.phone}`} className="text-red-600 hover:underline">{e.phone || "-"}</a>
+                    <span>·</span>
+                    <span>{e.category || e.type || "General"}</span>
+                    <span>·</span>
+                    <span>{formatTime(e.createdAt || e.timestamp)}</span>
+                  </div>
+                </div>
+                <StatusBadge status={e.status || "new"} />
+              </div>
+            ))}
           </div>
         )}
       </FormSection>
@@ -1194,55 +1337,151 @@ export default function AdminDashboard() {
 
   const renderEnquiries = () => (
     <>
-      <div className="flex gap-2 mb-4 flex-wrap">
+      {/* Header with count & refresh */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-gray-800">All Enquiries</span>
+          <span className="px-2.5 py-0.5 text-xs font-bold bg-red-100 text-red-600 rounded-full">{enquiries.length}</span>
+          {enquiryDebugInfo && <span className="text-[9px] text-gray-400 hidden md:inline">({enquiryDebugInfo})</span>}
+        </div>
+        <button
+          onClick={async () => {
+            try {
+              const snap = await get(ref(db, "enquiries"));
+              const list = rtdbToArray<Enquiry>(snap, "createdAt");
+              setEnquiries(list);
+              setEnquiryDebugInfo(`Refresh: ${list.length} enquiries`);
+              toast.success(`Refreshed: ${list.length} enquiries loaded`);
+            } catch (err: unknown) {
+              toast.error("Failed to refresh enquiries");
+            }
+          }}
+          className="px-3 py-1.5 text-xs font-medium border border-gray-200 bg-white text-gray-600 rounded-lg hover:bg-gray-50 cursor-pointer transition-all"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {enquiries.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3 text-xs text-yellow-700">
+          <span className="font-bold">No enquiries loaded.</span> Click "Refresh" to fetch from Firebase. {enquiryDebugInfo && <span className="text-yellow-500">({enquiryDebugInfo})</span>}
+        </div>
+      )}
+
+      {/* Status Filter */}
+      <div className="flex gap-2 mb-3 flex-wrap">
         {["all", "new", "pending", "done"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setEnquiryFilter(f)}
+          <button key={f} onClick={() => setEnquiryFilter(f)}
             className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
-              enquiryFilter === f
-                ? "bg-red-50 border-red-300 text-red-600"
-                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
-            }`}
-          >
+              enquiryFilter === f ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+            }`}>
             {f.charAt(0).toUpperCase() + f.slice(1)}
+            {f === "new" && newEnquiryCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{newEnquiryCount}</span>
+            )}
           </button>
         ))}
       </div>
 
+      {/* Date Filter */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+        <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Date Filter</div>
+        <div className="flex gap-2 flex-wrap">
+          {QUICK_DATE_OPTIONS.map((opt) => (
+            <button key={opt.id} onClick={() => { setEnquiryQuickDate(opt.id); setEnquiryDateFrom(""); setEnquiryDateTo(""); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                enquiryQuickDate === opt.id && !enquiryDateFrom && !enquiryDateTo ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 font-medium">From:</label>
+            <input type="date" value={enquiryDateFrom} onChange={(e) => { setEnquiryDateFrom(e.target.value); setEnquiryQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-red-400" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 font-medium">To:</label>
+            <input type="date" value={enquiryDateTo} onChange={(e) => { setEnquiryDateTo(e.target.value); setEnquiryQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-red-400" />
+          </div>
+          {(enquiryDateFrom || enquiryDateTo || enquiryQuickDate !== "all") && (
+            <button onClick={() => { setEnquiryDateFrom(""); setEnquiryDateTo(""); setEnquiryQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">Clear</button>
+          )}
+        </div>
+        <div className="text-xs text-gray-500 font-medium">Showing {paginatedEnquiries.length} of {filteredEnquiries.length} filtered ({enquiries.length} total in Firebase)</div>
+      </div>
+
       <FormSection title="">
         {filteredEnquiries.length === 0 ? (
-          <div className="text-center py-10 text-gray-400 text-sm">No {enquiryFilter} enquiries</div>
+          <div className="text-center py-10 text-gray-400 text-sm">
+            <p className="text-3xl mb-2">📭</p>
+            <p>No {enquiryFilter !== "all" ? enquiryFilter : ""} enquiries found</p>
+            <p className="text-[10px] mt-1">{enquiries.length} total enquiries in database</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {["Name", "Phone", "Type", "Message", "Time", "Status", "Actions"].map((h) => (
-                    <th key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2.5 text-left border-b border-gray-100 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEnquiries.map((e) => (
-                  <tr key={e.id}>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-50 font-medium">{e.name || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm border-b border-gray-50"><a href={`tel:${e.phone}`} className="text-red-600 hover:underline">{e.phone || "-"}</a></td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 border-b border-gray-50">{e.category || e.type || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-500 border-b border-gray-50 max-w-[200px]">{(e.message || "-").slice(0, 80)}{(e.message || "").length > 80 ? "..." : ""}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-400 border-b border-gray-50 whitespace-nowrap">{formatTime(e.createdAt || e.timestamp)}</td>
-                    <td className="px-3 py-2.5 border-b border-gray-50"><StatusBadge status={e.status || "new"} /></td>
-                    <td className="px-3 py-2.5 border-b border-gray-50">
-                      <div className="flex gap-1.5">
-                        <button onClick={() => markDone(e.id)} className="px-2.5 py-1 text-xs font-medium border border-green-200 bg-green-50 text-green-600 rounded-md hover:bg-green-100 cursor-pointer transition-all">✓ Done</button>
-                        <button onClick={() => markPending(e.id)} className="px-2.5 py-1 text-xs font-medium border border-orange-200 bg-orange-50 text-orange-600 rounded-md hover:bg-orange-100 cursor-pointer transition-all">⏳</button>
-                        <button onClick={() => deleteEnquiry(e.id)} className="px-2.5 py-1 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-md hover:bg-red-100 cursor-pointer transition-all">✕</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {paginatedEnquiries.map((e, idx) => (
+              <div key={e.id} className="bg-gray-50/80 border border-gray-100 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-gray-300">#{(enquiryPage - 1) * ENQUIRIES_PER_PAGE + idx + 1}</span>
+                      <p className="font-semibold text-gray-800 text-sm truncate">{e.name || "-"}</p>
+                    </div>
+                    <a href={`tel:${e.phone}`} className="text-xs text-red-600 hover:underline">{e.phone || "-"}</a>
+                  </div>
+                  <StatusBadge status={e.status || "new"} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="px-2 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-600 rounded-md border border-blue-100">{e.category || e.type || "General"}</span>
+                  <span className="px-2 py-0.5 text-[10px] text-gray-400">{formatTime(e.createdAt || e.timestamp)}</span>
+                </div>
+                {e.message && (
+                  <p className="text-xs text-gray-500 leading-relaxed">{e.message.length > 120 ? e.message.slice(0, 120) + "..." : e.message}</p>
+                )}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => markDone(e.id)} className="px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 cursor-pointer transition-all">✓ Done</button>
+                  <button onClick={() => markPending(e.id)} className="px-3 py-1.5 text-xs font-medium border border-orange-200 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 cursor-pointer transition-all">⏳ Pending</button>
+                  <button onClick={() => deleteEnquiry(e.id)} className="px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">✕ Delete</button>
+                </div>
+              </div>
+            ))}
+            
+            {/* Pagination Controls */}
+            {totalEnquiryPages > 1 && (
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                <div className="text-xs text-gray-500">
+                  Page {enquiryPage} of {totalEnquiryPages} ({filteredEnquiries.length} enquiries)
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEnquiryPage(1)}
+                    disabled={enquiryPage === 1}
+                    className="px-2.5 py-1.5 text-xs font-medium border border-gray-200 bg-white rounded-lg hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all"
+                  >First</button>
+                  <button
+                    onClick={() => setEnquiryPage(p => Math.max(1, p - 1))}
+                    disabled={enquiryPage === 1}
+                    className="px-3 py-1.5 text-xs font-medium border border-gray-200 bg-white rounded-lg hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all"
+                  >← Prev</button>
+                  <span className="px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg">{enquiryPage}</span>
+                  <button
+                    onClick={() => setEnquiryPage(p => Math.min(totalEnquiryPages, p + 1))}
+                    disabled={enquiryPage === totalEnquiryPages}
+                    className="px-3 py-1.5 text-xs font-medium border border-gray-200 bg-white rounded-lg hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all"
+                  >Next →</button>
+                  <button
+                    onClick={() => setEnquiryPage(totalEnquiryPages)}
+                    disabled={enquiryPage === totalEnquiryPages}
+                    className="px-2.5 py-1.5 text-xs font-medium border border-gray-200 bg-white rounded-lg hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all"
+                  >Last</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </FormSection>
@@ -1251,17 +1490,36 @@ export default function AdminDashboard() {
 
   const renderProductOrders = () => (
     <>
-      <div className="flex gap-2 mb-4 flex-wrap">
+      {/* Header with count & refresh */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-gray-800">All Orders</span>
+          <span className="px-2.5 py-0.5 text-xs font-bold bg-red-100 text-red-600 rounded-full">{productOrders.length}</span>
+        </div>
+        <button
+          onClick={async () => {
+            try {
+              const snap = await get(ref(db, "productOrders"));
+              const list = rtdbToArray<ProductOrder>(snap, "createdAt");
+              setProductOrders(list);
+              toast.success(`Refreshed: ${list.length} orders loaded`);
+            } catch {
+              toast.error("Failed to refresh orders");
+            }
+          }}
+          className="px-3 py-1.5 text-xs font-medium border border-gray-200 bg-white text-gray-600 rounded-lg hover:bg-gray-50 cursor-pointer transition-all flex items-center gap-1.5"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Status Filter */}
+      <div className="flex gap-2 mb-3 flex-wrap">
         {["all", "pending", "confirmed"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setProductOrderFilter(f)}
+          <button key={f} onClick={() => setProductOrderFilter(f)}
             className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
-              productOrderFilter === f
-                ? "bg-red-50 border-red-300 text-red-600"
-                : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
-            }`}
-          >
+              productOrderFilter === f ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+            }`}>
             {f.charAt(0).toUpperCase() + f.slice(1)}
             {f === "pending" && pendingProductOrderCount > 0 && (
               <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full">{pendingProductOrderCount}</span>
@@ -1270,41 +1528,91 @@ export default function AdminDashboard() {
         ))}
       </div>
 
+      {/* Search by Order ID */}
+      <div className="mb-3">
+        <input
+          type="text"
+          placeholder="Search by Order ID, name, phone, product..."
+          value={productOrderSearch}
+          onChange={(e) => setProductOrderSearch(e.target.value)}
+          className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg text-gray-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all"
+        />
+      </div>
+
+      {/* Date Filter */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+        <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Date Filter</div>
+        <div className="flex gap-2 flex-wrap">
+          {QUICK_DATE_OPTIONS.map((opt) => (
+            <button key={opt.id} onClick={() => { setOrderQuickDate(opt.id); setOrderDateFrom(""); setOrderDateTo(""); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                orderQuickDate === opt.id && !orderDateFrom && !orderDateTo ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 font-medium">From:</label>
+            <input type="date" value={orderDateFrom} onChange={(e) => { setOrderDateFrom(e.target.value); setOrderQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-red-400" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 font-medium">To:</label>
+            <input type="date" value={orderDateTo} onChange={(e) => { setOrderDateTo(e.target.value); setOrderQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-red-400" />
+          </div>
+          {(orderDateFrom || orderDateTo || orderQuickDate !== "all") && (
+            <button onClick={() => { setOrderDateFrom(""); setOrderDateTo(""); setOrderQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">Clear</button>
+          )}
+        </div>
+        <div className="text-[10px] text-gray-400">Showing {filteredProductOrders.length} of {productOrders.length} orders</div>
+      </div>
+
       <FormSection title="">
         {filteredProductOrders.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">No {productOrderFilter} orders</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {["Product", "Price", "Customer", "Phone", "Address", "Date", "Status", "Actions"].map((h) => (
-                    <th key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2.5 text-left border-b border-gray-100 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProductOrders.map((o) => (
-                  <tr key={o.id}>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-50 font-medium">{o.productName || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm font-bold text-red-600 border-b border-gray-50">{o.productPrice || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 border-b border-gray-50">{o.customerName || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm border-b border-gray-50"><a href={`tel:${o.customerPhone}`} className="text-red-600 hover:underline">{o.customerPhone || "-"}</a></td>
-                    <td className="px-3 py-2.5 text-sm text-gray-500 border-b border-gray-50 max-w-[150px]">{(o.customerAddress || "-").slice(0, 50)}{(o.customerAddress || "").length > 50 ? "..." : ""}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-400 border-b border-gray-50 whitespace-nowrap">{formatTime(o.createdAt)}</td>
-                    <td className="px-3 py-2.5 border-b border-gray-50"><ProductOrderStatusBadge status={o.status || "pending"} /></td>
-                    <td className="px-3 py-2.5 border-b border-gray-50">
-                      <div className="flex gap-1.5">
-                        {o.status !== "confirmed" && (
-                          <button onClick={() => confirmProductOrder(o.id)} className="px-2.5 py-1 text-xs font-medium border border-green-200 bg-green-50 text-green-600 rounded-md hover:bg-green-100 cursor-pointer transition-all">✓ Confirm</button>
-                        )}
-                        <button onClick={() => deleteProductOrder(o.id)} className="px-2.5 py-1 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-md hover:bg-red-100 cursor-pointer transition-all">✕</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {filteredProductOrders.map((o) => {
+              const orderId = o.orderId || ("RC-" + o.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase());
+              return (
+                <div key={o.id} className="bg-gray-50/80 border border-gray-100 rounded-xl p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="inline-block px-2 py-0.5 text-[10px] font-bold bg-red-50 text-red-600 rounded border border-red-200 mb-1">#{orderId}</span>
+                      <p className="font-semibold text-gray-800 text-sm">{o.productName || "-"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-red-600 text-sm">{o.productPrice || "-"}</p>
+                      <ProductOrderStatusBadge status={o.status || "pending"} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div><span className="text-gray-400">Customer:</span> <span className="text-gray-700 font-medium">{o.customerName || "-"}</span></div>
+                    <div><span className="text-gray-400">Phone:</span> <a href={`tel:${o.customerPhone}`} className="text-red-600 hover:underline font-medium">{o.customerPhone || "-"}</a></div>
+                    <div className="col-span-2"><span className="text-gray-400">Address:</span> <span className="text-gray-600">{o.customerAddress || "-"}</span></div>
+                    <div><span className="text-gray-400">Date:</span> <span className="text-gray-500">{formatTime(o.createdAt)}</span></div>
+                    {o.customerLat && o.customerLng && (
+                      <div><span className="text-gray-400">Location:</span> <a href={`https://www.google.com/maps?q=${o.customerLat},${o.customerLng}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">View on Map</a></div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-1 flex-wrap">
+                    {o.status !== "confirmed" && (
+                      <button onClick={() => confirmProductOrder(o.id)} className="px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 cursor-pointer transition-all">✓ Confirm</button>
+                    )}
+                    <button onClick={() => {
+                      const whatsapp = siteSettings.whatsapp || "919876543210";
+                      const msg = `Hi! Order payment details:\n\nOrder ID: ${orderId}\nProduct: ${o.productName}\nPrice: ${o.productPrice}\nCustomer: ${o.customerName}\nPhone: ${o.customerPhone}`;
+                      window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
+                    }} className="px-3 py-1.5 text-xs font-medium border border-green-300 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 cursor-pointer transition-all inline-flex items-center gap-1">📱 WhatsApp Pay</button>
+                    <button onClick={() => deleteProductOrder(o.id)} className="px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">✕ Delete</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </FormSection>
@@ -1313,7 +1621,31 @@ export default function AdminDashboard() {
 
   const renderServiceRequests = () => (
     <>
-      <div className="flex gap-2 mb-4 flex-wrap">
+      {/* Header with count & refresh */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-gray-800">All Service Requests</span>
+          <span className="px-2.5 py-0.5 text-xs font-bold bg-red-100 text-red-600 rounded-full">{serviceRequests.length}</span>
+        </div>
+        <button
+          onClick={async () => {
+            try {
+              const snap = await get(ref(db, "serviceRequests"));
+              const list = rtdbToArray<ServiceRequest>(snap, "createdAt");
+              setServiceRequests(list);
+              toast.success(`Refreshed: ${list.length} service requests loaded`);
+            } catch {
+              toast.error("Failed to refresh service requests");
+            }
+          }}
+          className="px-3 py-1.5 text-xs font-medium border border-gray-200 bg-white text-gray-600 rounded-lg hover:bg-gray-50 cursor-pointer transition-all flex items-center gap-1.5"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Status Filter */}
+      <div className="flex gap-2 mb-3 flex-wrap">
         {["all", "pending", "accepted", "completed"].map((f) => (
           <button
             key={f}
@@ -1332,116 +1664,166 @@ export default function AdminDashboard() {
         ))}
       </div>
 
+      {/* Date Filter */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+        <div className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Date Filter</div>
+        <div className="flex gap-2 flex-wrap">
+          {QUICK_DATE_OPTIONS.map((opt) => (
+            <button key={opt.id} onClick={() => { setServiceQuickDate(opt.id); setServiceDateFrom(""); setServiceDateTo(""); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                serviceQuickDate === opt.id && !serviceDateFrom && !serviceDateTo ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 font-medium">From:</label>
+            <input type="date" value={serviceDateFrom} onChange={(e) => { setServiceDateFrom(e.target.value); setServiceQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-red-400" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 font-medium">To:</label>
+            <input type="date" value={serviceDateTo} onChange={(e) => { setServiceDateTo(e.target.value); setServiceQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-red-400" />
+          </div>
+          {(serviceDateFrom || serviceDateTo || serviceQuickDate !== "all") && (
+            <button onClick={() => { setServiceDateFrom(""); setServiceDateTo(""); setServiceQuickDate("all"); }}
+              className="px-2.5 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">Clear</button>
+          )}
+        </div>
+        <div className="text-[10px] text-gray-400">Showing {filteredServiceReqs.length} of {serviceRequests.length} requests</div>
+      </div>
+
       <FormSection title="">
         {filteredServiceReqs.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">No {serviceReqFilter} service requests</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {["Name", "Phone", "Address", "Service Type", "Problem", "Time", "Status", "Actions"].map((h) => (
-                    <th key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2.5 text-left border-b border-gray-100 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredServiceReqs.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-50 font-medium">{r.name || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm border-b border-gray-50"><a href={`tel:${r.phone}`} className="text-red-600 hover:underline">{r.phone || "-"}</a></td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 border-b border-gray-50 max-w-[150px]">{(r.address || "-").slice(0, 50)}{(r.address || "").length > 50 ? "..." : ""}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 border-b border-gray-50">{r.serviceType || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-500 border-b border-gray-50 max-w-[150px]">{(r.problemDescription || "-").slice(0, 60)}{(r.problemDescription || "").length > 60 ? "..." : ""}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-400 border-b border-gray-50 whitespace-nowrap">{formatTime(r.createdAt)}</td>
-                    <td className="px-3 py-2.5 border-b border-gray-50"><ServiceReqStatusBadge status={r.status || "pending"} /></td>
-                    <td className="px-3 py-2.5 border-b border-gray-50">
-                      <div className="flex gap-1.5">
-                        {r.status !== "completed" && (
-                          <button onClick={() => markServiceReqCompleted(r.id)} className="px-2.5 py-1 text-xs font-medium border border-green-200 bg-green-50 text-green-600 rounded-md hover:bg-green-100 cursor-pointer transition-all">✓ Complete</button>
-                        )}
-                        {r.status === "pending" && (
-                          <button onClick={() => markServiceReqAccepted(r.id)} className="px-2.5 py-1 text-xs font-medium border border-blue-200 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 cursor-pointer transition-all">✓ Accept</button>
-                        )}
-                        <button onClick={() => deleteServiceReq(r.id)} className="px-2.5 py-1 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-md hover:bg-red-100 cursor-pointer transition-all">✕</button>
+          <div className="space-y-3">
+            {filteredServiceReqs.map((r) => {
+              const reqId = "SR-" + r.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase();
+              return (
+                <div key={r.id} className="bg-gray-50/80 border border-gray-100 rounded-xl p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="inline-block px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-600 rounded border border-blue-200 mb-1">#{reqId}</span>
+                      <p className="font-semibold text-gray-800 text-sm">{r.name || "-"}</p>
+                    </div>
+                    <ServiceReqStatusBadge status={r.status || "pending"} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div><span className="text-gray-400">Phone:</span> <a href={`tel:${r.phone}`} className="text-red-600 hover:underline font-medium">{r.phone || "-"}</a></div>
+                    <div><span className="text-gray-400">Service:</span> <span className="text-gray-700 font-medium">{r.serviceType || "-"}</span></div>
+                    <div className="col-span-2"><span className="text-gray-400">Address:</span> <span className="text-gray-600">{r.address || "-"}</span></div>
+                    {r.problemDescription && (
+                      <div className="col-span-2"><span className="text-gray-400">Problem:</span> <span className="text-gray-500">{r.problemDescription.length > 100 ? r.problemDescription.slice(0, 100) + "..." : r.problemDescription}</span></div>
+                    )}
+                    <div><span className="text-gray-400">Date:</span> <span className="text-gray-500">{formatTime(r.createdAt)}</span></div>
+                    {r.acceptedBy && <div><span className="text-gray-400">Accepted by:</span> <span className="text-blue-600 font-medium">{r.acceptedBy}</span></div>}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    {r.status !== "completed" && (
+                      <button onClick={() => markServiceReqCompleted(r.id)} className="px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 cursor-pointer transition-all">✓ Complete</button>
+                    )}
+                    {r.status === "pending" && (
+                      <button onClick={() => markServiceReqAccepted(r.id)} className="px-3 py-1.5 text-xs font-medium border border-blue-200 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 cursor-pointer transition-all">✓ Accept</button>
+                    )}
+                    <button onClick={() => deleteServiceReq(r.id)} className="px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">✕ Delete</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </FormSection>
+    </>
+  );
+
+  const renderStaff = () => {
+    // Calculate staff work history
+    const staffHistory = staffList.map((s) => {
+      const accepted = serviceRequests.filter((r) => r.acceptedBy === s.name || r.acceptedBy === s.email).length;
+      const completed = serviceRequests.filter((r) => (r.acceptedBy === s.name || r.acceptedBy === s.email) && r.status === "completed").length;
+      const pending = serviceRequests.filter((r) => (r.acceptedBy === s.name || r.acceptedBy === s.email) && r.status === "accepted").length;
+      return { ...s, acceptedCount: accepted, completedCount: completed, pendingCount: pending };
+    });
+
+    return (
+      <>
+        <FormSection title="Add New Staff Member">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Name">
+              <FormInput value={newStaffName} onChange={setNewStaffName} placeholder="Full name" />
+            </FormField>
+            <FormField label="Email">
+              <FormInput value={newStaffEmail} onChange={setNewStaffEmail} placeholder="email@example.com" type="email" />
+            </FormField>
+            <FormField label="Password">
+              <FormInput value={newStaffPassword} onChange={setNewStaffPassword} placeholder="Password" type="password" />
+            </FormField>
+            <FormField label="Phone">
+              <FormInput value={newStaffPhone} onChange={setNewStaffPhone} placeholder="Phone number" />
+            </FormField>
+          </div>
+          <div className="mt-4">
+            <SaveBtn onClick={addStaff} loading={saving === "staff"}>＋ Add Staff Member</SaveBtn>
+          </div>
+        </FormSection>
+
+        <FormSection title="Staff Members & History">
+          {staffHistory.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">No staff members yet</div>
+          ) : (
+            <div className="space-y-3">
+              {staffHistory.map((s) => (
+                <div key={s.id} className="bg-gray-50/80 border border-gray-100 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-gray-800 text-sm">{s.name || "-"}</p>
+                        <button
+                          onClick={() => toggleStaffActive(s.id, s.active)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer transition-all ${
+                            s.active !== false
+                              ? "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
+                              : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                          }`}
+                        >
+                          {s.active !== false ? "ACTIVE" : "INACTIVE"}
+                        </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </FormSection>
-    </>
-  );
-
-  const renderStaff = () => (
-    <>
-      <FormSection title="Add New Staff Member">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField label="Name">
-            <FormInput value={newStaffName} onChange={setNewStaffName} placeholder="Full name" />
-          </FormField>
-          <FormField label="Email">
-            <FormInput value={newStaffEmail} onChange={setNewStaffEmail} placeholder="email@example.com" type="email" />
-          </FormField>
-          <FormField label="Password">
-            <FormInput value={newStaffPassword} onChange={setNewStaffPassword} placeholder="Password" type="password" />
-          </FormField>
-          <FormField label="Phone">
-            <FormInput value={newStaffPhone} onChange={setNewStaffPhone} placeholder="Phone number" />
-          </FormField>
-        </div>
-        <div className="mt-4">
-          <SaveBtn onClick={addStaff} loading={saving === "staff"}>＋ Add Staff Member</SaveBtn>
-        </div>
-      </FormSection>
-
-      <FormSection title="Current Staff">
-        {staffList.length === 0 ? (
-          <div className="text-center py-10 text-gray-400 text-sm">No staff members yet</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {["Name", "Email", "Phone", "Status", "Added", "Actions"].map((h) => (
-                    <th key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2.5 text-left border-b border-gray-100 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {staffList.map((s) => (
-                  <tr key={s.id}>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-50 font-medium">{s.name || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-600 border-b border-gray-50">{s.email || "-"}</td>
-                    <td className="px-3 py-2.5 text-sm border-b border-gray-50"><a href={`tel:${s.phone}`} className="text-red-600 hover:underline">{s.phone || "-"}</a></td>
-                    <td className="px-3 py-2.5 border-b border-gray-50">
-                      <button
-                        onClick={() => toggleStaffActive(s.id, s.active)}
-                        className={`px-2.5 py-0.5 rounded-md text-xs font-semibold border cursor-pointer transition-all ${
-                          s.active !== false
-                            ? "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
-                            : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-                        }`}
-                      >
-                        {s.active !== false ? "ACTIVE" : "INACTIVE"}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-400 border-b border-gray-50 whitespace-nowrap">{formatTime(s.createdAt)}</td>
-                    <td className="px-3 py-2.5 border-b border-gray-50">
-                      <button onClick={() => deleteStaff(s.id)} className="px-2.5 py-1 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-md hover:bg-red-100 cursor-pointer transition-all">✕ Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </FormSection>
-    </>
-  );
+                      <p className="text-xs text-gray-500 mt-0.5">{s.email || "-"}</p>
+                    </div>
+                    <button onClick={() => deleteStaff(s.id)} className="px-2.5 py-1 text-xs font-medium border border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 cursor-pointer transition-all">✕</button>
+                  </div>
+                  {s.phone && (
+                    <a href={`tel:${s.phone}`} className="text-xs text-red-600 hover:underline">📞 {s.phone}</a>
+                  )}
+                  {/* Work History Stats */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 text-center">
+                      <p className="text-lg font-bold text-blue-600">{s.acceptedCount}</p>
+                      <p className="text-[9px] text-blue-500 font-medium uppercase">Total Jobs</p>
+                    </div>
+                    <div className="bg-green-50 border border-green-100 rounded-lg p-2 text-center">
+                      <p className="text-lg font-bold text-green-600">{s.completedCount}</p>
+                      <p className="text-[9px] text-green-500 font-medium uppercase">Completed</p>
+                    </div>
+                    <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-2 text-center">
+                      <p className="text-lg font-bold text-yellow-600">{s.pendingCount}</p>
+                      <p className="text-[9px] text-yellow-500 font-medium uppercase">Active</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400">Added: {formatTime(s.createdAt)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </FormSection>
+      </>
+    );
+  };
 
   // Extract customer locations from service requests that have lat/lng
   const customerLocations = serviceRequests
@@ -2295,9 +2677,9 @@ export default function AdminDashboard() {
       case "enquiries": return renderEnquiries();
       case "productOrders": return renderProductOrders();
       case "serviceRequests": return renderServiceRequests();
-      case "staff": return renderStaff();
+      case "staff": return isMasterAdmin ? renderStaff() : renderDashboard();
       case "liveTracking": return renderLiveTracking();
-      case "settings": return renderSettings();
+      case "settings": return isMasterAdmin ? renderSettings() : renderDashboard();
       default: return renderDashboard();
     }
   };
@@ -2319,13 +2701,14 @@ export default function AdminDashboard() {
   // ═══════════════════════════════════════
 
   const mobileNavItems = [
-    { id: "dashboard", icon: "📊", label: "Dashboard" },
-    { id: "productOrders", icon: "📦", label: "Orders" },
-    { id: "serviceRequests", icon: "🔧", label: "Requests" },
-    { id: "liveTracking", icon: "📍", label: "Live" },
-    { id: "staff", icon: "👤", label: "Staff" },
-    { id: "settings", icon: "⚙️", label: "Settings" },
-  ];
+    { id: "dashboard", icon: "📊", label: "Home", masterOnly: false },
+    { id: "enquiries", icon: "📩", label: "Enquiries", masterOnly: false },
+    { id: "productOrders", icon: "📦", label: "Orders", masterOnly: false },
+    { id: "serviceRequests", icon: "🔧", label: "Requests", masterOnly: false },
+    { id: "liveTracking", icon: "📍", label: "Live", masterOnly: false },
+    { id: "staff", icon: "👤", label: "Staff", masterOnly: true },
+    { id: "settings", icon: "⚙️", label: "Settings", masterOnly: true },
+  ].filter((item) => !item.masterOnly || isMasterAdmin);
 
   // ═══════════════════════════════════════
   //  MAIN RENDER
@@ -2342,14 +2725,14 @@ export default function AdminDashboard() {
           </div>
           <nav className="flex-1 py-3">
             {[
-              { id: "dashboard", icon: "📊", label: "Dashboard" },
-              { id: "enquiries", icon: "📩", label: "Enquiries" },
-              { id: "productOrders", icon: "📦", label: "Product Orders" },
-              { id: "serviceRequests", icon: "🔧", label: "Service Requests" },
-              { id: "liveTracking", icon: "📍", label: "Live Tracking" },
-              { id: "staff", icon: "👤", label: "Staff" },
-              { id: "settings", icon: "⚙️", label: "Settings" },
-            ].map((item) => (
+              { id: "dashboard", icon: "📊", label: "Dashboard", masterOnly: false },
+              { id: "enquiries", icon: "📩", label: "Enquiries", masterOnly: false },
+              { id: "productOrders", icon: "📦", label: "Product Orders", masterOnly: false },
+              { id: "serviceRequests", icon: "🔧", label: "Service Requests", masterOnly: false },
+              { id: "liveTracking", icon: "📍", label: "Live Tracking", masterOnly: false },
+              { id: "staff", icon: "👤", label: "Staff", masterOnly: true },
+              { id: "settings", icon: "⚙️", label: "Settings", masterOnly: true },
+            ].filter((item) => !item.masterOnly || isMasterAdmin).map((item) => (
               <button
                 key={item.id}
                 onClick={() => showPanel(item.id)}
@@ -2375,7 +2758,10 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs bg-red-50 text-red-600">{adminUser.email?.charAt(0).toUpperCase()}</div>
                 )}
-                <span className="text-xs text-gray-500 truncate">{adminUser.email}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs text-gray-700 truncate block">{adminUser.email}</span>
+                  {isMasterAdmin && <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">Master Admin</span>}
+                </div>
               </div>
             )}
             <button
@@ -2404,14 +2790,14 @@ export default function AdminDashboard() {
             </div>
             <nav className="flex-1 py-2">
               {[
-                { id: "dashboard", icon: "📊", label: "Dashboard" },
-                { id: "enquiries", icon: "📩", label: "Enquiries" },
-                { id: "productOrders", icon: "📦", label: "Product Orders" },
-                { id: "serviceRequests", icon: "🔧", label: "Service Requests" },
-                { id: "liveTracking", icon: "📍", label: "Live Tracking" },
-                { id: "staff", icon: "👤", label: "Staff" },
-                { id: "settings", icon: "⚙️", label: "Settings" },
-              ].map((item) => (
+                { id: "dashboard", icon: "📊", label: "Dashboard", masterOnly: false },
+                { id: "enquiries", icon: "📩", label: "Enquiries", masterOnly: false },
+                { id: "productOrders", icon: "📦", label: "Product Orders", masterOnly: false },
+                { id: "serviceRequests", icon: "🔧", label: "Service Requests", masterOnly: false },
+                { id: "liveTracking", icon: "📍", label: "Live Tracking", masterOnly: false },
+                { id: "staff", icon: "👤", label: "Staff", masterOnly: true },
+                { id: "settings", icon: "⚙️", label: "Settings", masterOnly: true },
+              ].filter((item) => !item.masterOnly || isMasterAdmin).map((item) => (
                 <button
                   key={item.id}
                   onClick={() => showPanel(item.id)}
@@ -2451,7 +2837,10 @@ export default function AdminDashboard() {
               </button>
             )}
             <div>
-              <h1 className="text-sm font-bold text-gray-800">{panelTitle}</h1>
+              <h1 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                {panelTitle}
+                {isMasterAdmin && <span className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-100 text-purple-700 rounded border border-purple-200 uppercase tracking-wider">Master</span>}
+              </h1>
               <p className="text-xs text-gray-400">{panelSubtitle}</p>
             </div>
           </div>
@@ -2473,21 +2862,27 @@ export default function AdminDashboard() {
 
       {/* ── MOBILE BOTTOM NAV ── */}
       {isMobile && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-40" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-          {mobileNavItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => showPanel(item.id)}
-              className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-xs cursor-pointer transition-all ${
-                activePanel === item.id
-                  ? "text-red-600 font-semibold"
-                  : "text-gray-400"
-              }`}
-            >
-              <span className="text-lg">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
+        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-40 overflow-x-auto" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {mobileNavItems.map((item) => {
+            const badgeCount = item.id === "enquiries" ? newEnquiryCount : item.id === "productOrders" ? pendingProductOrderCount : item.id === "serviceRequests" ? pendingServiceReqCount : 0;
+            return (
+              <button
+                key={item.id}
+                onClick={() => showPanel(item.id)}
+                className={`flex-1 min-w-[52px] py-2.5 flex flex-col items-center gap-0.5 text-[10px] cursor-pointer transition-all relative ${
+                  activePanel === item.id
+                    ? "text-red-600 font-semibold"
+                    : "text-gray-400"
+                }`}
+              >
+                <span className="text-base">{item.icon}</span>
+                {item.label}
+                {badgeCount > 0 && (
+                  <span className="absolute top-1 right-1/2 translate-x-5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">{badgeCount > 9 ? "9+" : badgeCount}</span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       )}
     </div>

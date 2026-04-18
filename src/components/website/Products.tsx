@@ -52,6 +52,7 @@ export default function Products() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orderForm, setOrderForm] = useState({ name: "", phone: "", address: "" });
   const [orderLoading, setOrderLoading] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState("");
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   const handleImageError = (productId: string) => {
@@ -72,14 +73,14 @@ export default function Products() {
         setProducts(DEFAULT_PRODUCTS.map((p, i) => ({ ...p, id: `default-${i}` })));
       }
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
   useEffect(() => {
     const unsub = onValue(ref(db, "settings/site"), (snap) => {
       if (snap.exists()) setSiteSettings(snap.val());
     });
-    return () => unsub();
+    return unsub;
   }, []);
 
   const productsHeader = siteSettings.productsHeader || "// Product Lineup";
@@ -127,8 +128,32 @@ export default function Products() {
       return;
     }
     setOrderLoading(true);
+
+    // Try to capture customer's live location
+    let customerLat: number | null = null;
+    let customerLng: number | null = null;
     try {
-      await push(ref(db, "productOrders"), {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Geolocation not supported"));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 60000,
+        });
+      });
+      customerLat = position.coords.latitude;
+      customerLng = position.coords.longitude;
+    } catch (geoErr) {
+      console.warn("Could not get customer location:", geoErr);
+    }
+
+    try {
+      const orderId = "RC-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const orderData: Record<string, unknown> = {
+        orderId,
         productName: selectedProduct?.name,
         productPrice: selectedProduct?.price,
         customerName: orderForm.name.trim(),
@@ -136,10 +161,18 @@ export default function Products() {
         customerAddress: orderForm.address.trim(),
         status: "pending",
         createdAt: Date.now(),
-      });
+      };
+      // Add location data if available
+      if (customerLat !== null && customerLng !== null) {
+        orderData.customerLat = customerLat;
+        orderData.customerLng = customerLng;
+        orderData.customerLocationTime = Date.now();
+      }
+      await push(ref(db, "productOrders"), orderData);
+      setLastOrderId(orderId);
       setOrderOpen(false);
       setOrderSuccessOpen(true);
-      sonnerToast.success("Order Placed!", { description: "Please complete payment via WhatsApp." });
+      sonnerToast.success("Order Placed!", { description: `Order ID: ${orderId}. Complete payment via WhatsApp.` });
     } catch {
       sonnerToast.error("Order failed. Please try again.");
     }
@@ -147,8 +180,9 @@ export default function Products() {
   };
 
   const openWhatsApp = () => {
-    const msg = `New Order: ${selectedProduct?.name}, Name: ${orderForm.name}, Address: ${orderForm.address}, Phone: ${orderForm.phone}`;
-    window.open(`https://wa.me/91XXXXXXXXXX?text=${encodeURIComponent(msg)}`, "_blank");
+    const msg = `Hi! I want to pay for my order.\n\nOrder ID: ${lastOrderId}\nProduct: ${selectedProduct?.name}\nPrice: ${selectedProduct?.price}\nName: ${orderForm.name}\nPhone: ${orderForm.phone}\nAddress: ${orderForm.address}`;
+    const whatsapp = siteSettings.whatsapp || "919876543210";
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   return (
@@ -329,7 +363,13 @@ export default function Products() {
               <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
             <h3 className="text-xl font-bold text-gray-900">Your order has been placed!</h3>
-            <p className="text-gray-500 text-sm">Our team will contact you shortly to confirm the order and payment details.</p>
+            {lastOrderId && (
+              <div className="inline-flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+                <span className="text-xs text-gray-500 font-medium">Order ID:</span>
+                <span className="text-sm font-bold text-red-600 tracking-wider">{lastOrderId}</span>
+              </div>
+            )}
+            <p className="text-gray-500 text-sm">Save this Order ID! Share it on WhatsApp for payment.</p>
             {selectedProduct && (
               <div className="bg-blue-50/60 backdrop-blur-md rounded-lg p-3 border border-blue-100/50 text-left">
                 <div className="flex items-center gap-3">

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ref, onValue, update } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { useAppStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,22 +31,13 @@ export default function PendingRequests() {
 
   useEffect(() => {
     const reqRef = ref(db, "serviceRequests");
-    const unsubscribe = onValue(reqRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const list = Object.entries(data)
-          .map(([key, val]: [string, unknown]) => ({
-            id: key,
-            ...(val as Omit<ServiceRequest, "id">),
-          }))
-          .filter((r) => r.status === "pending")
-          .sort((a, b) => b.createdAt - a.createdAt);
-        setRequests(list);
-      } else {
-        setRequests([]);
-      }
+    const unsub = onValue(reqRef, (snap) => {
+      const all = rtdbToArray<ServiceRequest>(snap, "createdAt");
+      console.log(`[Firebase] PendingRequests loaded: ${all.length} total items`);
+      const pending = all.filter((r) => r.status === "pending");
+      setRequests(pending);
     });
-    return () => unsubscribe();
+    return unsub;
   }, []);
 
   const acceptRequest = async (req: ServiceRequest) => {

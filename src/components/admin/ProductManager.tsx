@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ref, onValue, push, update, remove } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,20 +66,12 @@ export default function ProductManager() {
 
   useEffect(() => {
     const prodRef = ref(db, "products");
-    const unsubscribe = onValue(prodRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const list = Object.entries(data).map(([key, val]: [string, unknown]) => ({
-          id: key,
-          ...(val as Omit<Product, "id">),
-        }));
-        list.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setProducts(list);
-      } else {
-        setProducts([]);
-      }
+    const unsub = onValue(prodRef, (snap) => {
+      const list = rtdbToArray<Product>(snap, "order");
+      console.log(`[Firebase] ProductManager loaded: ${list.length} products`);
+      setProducts(list);
     });
-    return () => unsubscribe();
+    return unsub;
   }, []);
 
   const openAdd = () => {

@@ -14,6 +14,9 @@ const ALLOWED_ADMIN_EMAILS = [
   "manmohansharma002008@gmail.com",
 ];
 
+// Master admin email
+const MASTER_ADMIN_EMAIL = "manmohansharma002008@gmail.com";
+
 export default function AdminLogin() {
   const { setAdminLoggedIn, setAdminType, setAdminUser, setView } = useAppStore();
   const [loading, setLoading] = useState(false);
@@ -33,7 +36,7 @@ export default function AdminLogin() {
               photoURL: result.user.photoURL,
               uid: result.user.uid,
             });
-            setAdminType("admin");
+            setAdminType(email === MASTER_ADMIN_EMAIL ? "master" : "admin");
             setAdminLoggedIn(true);
           } else {
             setError("This Google account is not authorized as admin.");
@@ -67,7 +70,7 @@ export default function AdminLogin() {
           photoURL: user.photoURL,
           uid: user.uid,
         });
-        setAdminType("admin");
+        setAdminType(email === MASTER_ADMIN_EMAIL ? "master" : "admin");
         setAdminLoggedIn(true);
       } else {
         setError("This Google account is not authorized as admin.");

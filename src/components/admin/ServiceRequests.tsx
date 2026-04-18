@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ref, onValue, update, remove } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,20 +47,12 @@ export default function ServiceRequests({ compact = false }: { compact?: boolean
 
   useEffect(() => {
     const reqRef = ref(db, "serviceRequests");
-    const unsubscribe = onValue(reqRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const list = Object.entries(data).map(([key, val]: [string, unknown]) => ({
-          id: key,
-          ...(val as Omit<ServiceRequest, "id">),
-        }));
-        list.sort((a, b) => b.createdAt - a.createdAt);
-        setRequests(list);
-      } else {
-        setRequests([]);
-      }
+    const unsub = onValue(reqRef, (snap) => {
+      const list = rtdbToArray<ServiceRequest>(snap, "createdAt");
+      console.log(`[Firebase] ServiceRequests loaded: ${list.length} requests`);
+      setRequests(list);
     });
-    return () => unsubscribe();
+    return unsub;
   }, []);
 
   const filtered = requests.filter((r) => {

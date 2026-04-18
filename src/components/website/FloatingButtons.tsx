@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ref, push, onValue } from "firebase/database";
+import { ref, push, set, onValue } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useAppStore } from "@/lib/store";
 import { toast } from "sonner";
@@ -127,7 +127,8 @@ export default function FloatingButtons() {
     }
     setEnquiryLoading(true);
     try {
-      await push(ref(db, "enquiries"), {
+      const enquiryRef = push(ref(db, "enquiries"));
+      const enquiryData = {
         name: enquiryForm.name.trim(),
         phone: enquiryForm.phone.replace(/\D/g, ''),
         category: enquiryForm.category,
@@ -135,11 +136,15 @@ export default function FloatingButtons() {
         source: "website_enquiry",
         status: "new",
         createdAt: Date.now(),
-      });
+      };
+      console.log("[FloatingButtons] Pushing enquiry with auto-generated key:", enquiryRef.key, enquiryData);
+      await set(enquiryRef, enquiryData);
+      console.log("[FloatingButtons] Enquiry pushed successfully, key:", enquiryRef.key);
       setEnquirySubmitted(true);
       setEnquiryForm({ name: "", phone: "", category: "", message: "" });
       toast.success("Enquiry Sent!", { description: "We will get back to you soon." });
-    } catch {
+    } catch (err) {
+      console.error("[FloatingButtons] Failed to push enquiry:", err);
       toast.error("Failed to send");
     }
     setEnquiryLoading(false);

@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ref, push, onValue } from "firebase/database";
+import { ref, push, set, onValue } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { toast } from "sonner";
 import { Clock, Phone, Mail, Send, CheckCircle, Navigation } from "lucide-react";
@@ -149,7 +149,8 @@ export default function Contact() {
     }
     setLoading(true);
     try {
-      await push(ref(db, "enquiries"), {
+      const enquiryRef = push(ref(db, "enquiries"));
+      const enquiryData = {
         name: form.name.trim(),
         phone: form.phone.trim(),
         category: form.category,
@@ -157,11 +158,15 @@ export default function Contact() {
         source: "contact_form",
         status: "new",
         createdAt: Date.now(),
-      });
+      };
+      console.log("[Contact] Pushing enquiry with auto-generated key:", enquiryRef.key, enquiryData);
+      await set(enquiryRef, enquiryData);
+      console.log("[Contact] Enquiry pushed successfully, key:", enquiryRef.key);
       setSubmitted(true);
       setForm({ name: "", phone: "", category: "", message: "" });
       toast.success("Enquiry Sent!", { description: "We will contact you soon." });
-    } catch {
+    } catch (err) {
+      console.error("[Contact] Failed to push enquiry:", err);
       toast.error("Failed to send enquiry");
     }
     setLoading(false);

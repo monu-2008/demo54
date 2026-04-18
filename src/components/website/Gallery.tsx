@@ -91,7 +91,7 @@ export default function Gallery() {
       }
     );
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
   // Extract unique categories dynamically from gallery items

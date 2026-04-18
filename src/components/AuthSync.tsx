@@ -40,7 +40,7 @@ export default function AuthSync() {
       }
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, [adminLoggedIn, adminType, adminLogout]);
 
   // Verify staff account is still active in Firebase on refresh

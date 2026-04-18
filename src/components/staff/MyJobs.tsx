@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ref, onValue, update } from "firebase/database";
 import { db } from "@/lib/firebase";
+import { rtdbToArray } from "@/lib/rtdbHelpers";
 import { useAppStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,27 +36,22 @@ export default function MyJobs() {
   useEffect(() => {
     if (!staffUser) return;
     const reqRef = ref(db, "serviceRequests");
-    const unsubscribe = onValue(reqRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const all = Object.entries(data).map(([key, val]: [string, unknown]) => ({
-          id: key,
-          ...(val as Omit<ServiceRequest, "id">),
-        }));
+    const unsub = onValue(reqRef, (snap) => {
+      const all = rtdbToArray<ServiceRequest>(snap, "createdAt");
+      console.log(`[Firebase] MyJobs serviceRequests loaded: ${all.length} items`);
 
-        const myAccepted = all
-          .filter((r) => r.status === "accepted" && r.acceptedBy === staffUser.name)
-          .sort((a, b) => (b.acceptedAt || 0) - (a.acceptedAt || 0));
+      const myAccepted = all
+        .filter((r) => r.status === "accepted" && r.acceptedBy === staffUser.name)
+        .sort((a, b) => (b.acceptedAt || 0) - (a.acceptedAt || 0));
 
-        const myCompleted = all
-          .filter((r) => r.status === "completed" && r.acceptedBy === staffUser.name)
-          .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+      const myCompleted = all
+        .filter((r) => r.status === "completed" && r.acceptedBy === staffUser.name)
+        .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
-        setAcceptedJobs(myAccepted);
-        setCompletedJobs(myCompleted);
-      }
+      setAcceptedJobs(myAccepted);
+      setCompletedJobs(myCompleted);
     });
-    return () => unsubscribe();
+    return unsub;
   }, [staffUser]);
 
   const markComplete = async (req: ServiceRequest) => {
