@@ -1,0 +1,50 @@
+{
+  "rules": {
+    "enquiries": {
+      ".read": true,
+      ".write": true,
+      "$enquiryId": {
+        ".validate": "newData.hasChildren(['name', 'phone'])"
+      }
+    },
+    "serviceRequests": {
+      ".read": true,
+      ".write": true,
+      "$requestId": {
+        ".validate": "newData.hasChildren(['name', 'phone', 'serviceType'])"
+      }
+    },
+    "productOrders": {
+      ".read": true,
+      ".write": true
+    },
+    "staff": {
+      ".read": true,
+      ".write": true
+    },
+    "staffLocations": {
+      ".read": true,
+      ".write": true
+    },
+    "settings": {
+      ".read": true,
+      ".write": true
+    },
+    "services": {
+      ".read": true,
+      ".write": true
+    },
+    "products": {
+      ".read": true,
+      ".write": true
+    },
+    "branches": {
+      ".read": true,
+      ".write": true
+    },
+    "gallery": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
