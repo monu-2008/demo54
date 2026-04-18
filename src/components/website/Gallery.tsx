@@ -146,7 +146,7 @@ export default function Gallery() {
         </div>
 
         {/* Category Tabs */}
-        <div className="flex justify-center gap-1.5 sm:gap-2 mb-6 sm:mb-10 flex-wrap">
+        <div className="flex justify-start sm:justify-center gap-1.5 sm:gap-2 mb-6 sm:mb-10 overflow-x-auto pb-2 flex-nowrap sm:flex-wrap scrollbar-hide">
           {categories.map((cat) => (
             <Button
               key={cat}

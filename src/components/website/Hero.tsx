@@ -139,7 +139,7 @@ export default function Hero() {
   };
 
   return (
-    <section id="hero" className="relative min-h-[60vh] sm:min-h-[70vh] lg:min-h-screen flex items-center overflow-hidden overflow-x-hidden">
+    <section id="hero" className="relative min-h-[50vh] sm:min-h-[70vh] lg:min-h-screen flex items-center overflow-hidden overflow-x-hidden">
       {/* Animated background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-[280px] sm:w-[500px] h-[280px] sm:h-[500px] rounded-full blur-3xl animate-pulse" style={{ background: "color-mix(in srgb, var(--theme-primary) 12%, transparent)" }} />
@@ -151,10 +151,10 @@ export default function Hero() {
       {/* Grid pattern overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "linear-gradient(color-mix(in srgb, var(--theme-primary) 2.5%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--theme-primary) 2.5%, transparent) 1px, transparent 1px)", backgroundSize: "64px 64px" }} />
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 lg:pt-24 pb-8 sm:pb-10 lg:pb-16 w-full">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-20 lg:pt-24 pb-4 sm:pb-10 lg:pb-16 w-full">
         <div className="grid lg:grid-cols-2 gap-6 sm:gap-12 items-center">
           {/* Left content */}
-          <div className="space-y-4 sm:space-y-8">
+          <div className="space-y-3 sm:space-y-8">
             {/* Eyebrow */}
             <div className="inline-flex items-center gap-2 bg-white/60 backdrop-blur-md border rounded-full px-3 sm:px-4 py-1.5 sm:py-2 shadow-sm" style={{ animation: "fadeUp 0.7s 0.2s both", borderColor: "var(--theme-primary-10)" }}>
               <div className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full animate-pulse" style={{ background: "var(--theme-primary)", boxShadow: "0 0 8px color-mix(in srgb, var(--theme-primary) 50%, transparent)" }} />
@@ -190,11 +190,11 @@ export default function Hero() {
             </div>
 
             {/* CTA Buttons */}
-            <div className="flex flex-wrap gap-2 sm:gap-4" style={{ animation: "fadeUp 0.7s 0.88s both" }}>
-              <Button size="lg" className="text-white shadow-lg rounded-xl px-4 sm:px-8 h-10 sm:h-13 text-sm sm:text-base relative overflow-hidden group hover:brightness-110 transition-all" style={{ background: "var(--theme-gradient-r)" }} onClick={() => setBookingModalOpen(true)}>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4" style={{ animation: "fadeUp 0.7s 0.88s both" }}>
+              <Button size="lg" className="w-full sm:w-auto text-white shadow-lg rounded-xl px-4 sm:px-8 h-10 sm:h-13 text-sm sm:text-base relative overflow-hidden group hover:brightness-110 transition-all" style={{ background: "var(--theme-gradient-r)" }} onClick={() => setBookingModalOpen(true)}>
                 <Wrench className="w-4 sm:w-5 h-4 sm:h-5 mr-1.5 sm:mr-2" /> {heroCtaPrimary}
               </Button>
-              <Button size="lg" variant="outline" className="border-2 text-gray-700 rounded-xl px-4 sm:px-8 h-10 sm:h-13 text-sm sm:text-base bg-white/50 backdrop-blur-md hover:brightness-110 transition-all" style={{ borderColor: "var(--theme-primary-20)", color: "var(--theme-primary)" }} onClick={() => setView("fullProducts")}>
+              <Button size="lg" variant="outline" className="w-full sm:w-auto border-2 text-gray-700 rounded-xl px-4 sm:px-8 h-10 sm:h-13 text-sm sm:text-base bg-white/50 backdrop-blur-md hover:brightness-110 transition-all" style={{ borderColor: "var(--theme-primary-20)", color: "var(--theme-primary)" }} onClick={() => setView("fullProducts")}>
                 {heroCtaSecondary} <ArrowRight className="w-3 sm:w-4 h-3 sm:h-4 ml-1.5 sm:ml-2" />
               </Button>
             </div>

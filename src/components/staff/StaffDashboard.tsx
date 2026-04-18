@@ -582,7 +582,7 @@ export default function StaffDashboard() {
             ) : (
               pendingRequests.map((req) => (
                 <div key={req.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-2 sm:gap-3">
                     <div className="space-y-2 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <StatusBadge status="pending" />
@@ -598,7 +598,7 @@ export default function StaffDashboard() {
                       </div>
                       <div className="flex items-start gap-2">
                         <MapPin className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                        <span className="text-sm text-gray-600">{req.address}</span>
+                        <span className="text-sm text-gray-600 line-clamp-2">{req.address}</span>
                       </div>
                       {req.customerLat && req.customerLng && (
                         <a href={`https://www.google.com/maps?q=${req.customerLat},${req.customerLng}`} target="_blank" rel="noopener noreferrer"
@@ -615,7 +615,7 @@ export default function StaffDashboard() {
                       )}
                     </div>
                     <button onClick={() => acceptRequest(req)}
-                      className="px-4 py-2.5 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all cursor-pointer shrink-0">
+                      className="px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all cursor-pointer shrink-0 self-start">
                       Accept
                     </button>
                   </div>

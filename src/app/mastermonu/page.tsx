@@ -112,7 +112,7 @@ export default function MasterAdminPage() {
           </div>
         )}
 
-        <AdminDashboard />
+        <AdminDashboard darkMode={true} />
       </div>
     );
   }

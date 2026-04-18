@@ -199,7 +199,7 @@ export default function Products() {
         </div>
 
         {/* Category Tabs */}
-        <div className="flex justify-center gap-2 mb-8 flex-wrap">
+        <div className="flex justify-start sm:justify-center gap-2 mb-8 overflow-x-auto pb-2 flex-nowrap sm:flex-wrap scrollbar-hide">
           {CATEGORIES.map((cat) => (
             <Button
               key={cat}

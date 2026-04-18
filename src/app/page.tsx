@@ -26,8 +26,10 @@ export default function Home() {
 
   const handleIntroComplete = useCallback(() => {
     setIntroComplete(true);
-    // Scroll to top immediately so Hero section is visible right after splash
-    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    // Small delay to ensure DOM is ready then scroll to hero
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    }, 100);
   }, []);
 
   // Also ensure scroll to top on mount
